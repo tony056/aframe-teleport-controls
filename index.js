@@ -201,11 +201,11 @@ AFRAME.registerComponent('teleport-controls', {
       this.teleportEntity.setAttribute('visible', true);
       this.hitEntity.setAttribute('visible', false);
       this.hit = false;
+      this.collidedIndex = -1;
       this.setLineMaterial(this.hit);
 
       if (this.data.type === 'parabolic') {
         v0.copy(direction).multiplyScalar(this.data.curveShootingSpeed);
-        this.collidedIndex = -1;
         this.lastDrawnIndex = 0;
         // const numPoints = this.data.drawIncrementally ? this.numActivePoints : this.line.numPoints;
         const numPoints = this.raycastPoints.length;
@@ -222,32 +222,26 @@ AFRAME.registerComponent('teleport-controls', {
 
           if (this.isMeshCollided()) {
             this.collidedIndex = i;
-            this.hitEntity.setAttribute('position', this.hitPoint);
-            this.hitEntity.setAttribute('visible', true);
             this.hit = true;
-            this.setLineMaterial(this.hit);
             break;
           }
         }
-        if (this.hit) {
-          // collision happened, set the rest of points to the hit point.
-          for (let j = this.collidedIndex; j < numPoints; j++) {
-            this.raycastPoints[j].copy(this.hitPoint);
-          }
-        }
-        this.setLinePoints();
       } else if (this.data.type === 'line') {
         next.copy(last).add(auxDirection.copy(direction).multiplyScalar(this.data.maxLength));
         this.raycaster.far = this.data.maxLength;
         this.raycaster.set(p0, direction);
-        this.line.setPoint(0, p0);
-
-        // @todo: after refactor the checkMeshCollisions
+        this.raycastPoints[0].copy(p0);
+        this.raycastPoints[1].copy(next);
         if (this.isMeshCollided()) {
-
+          this.collidedIndex = 1;
+          this.hit = true;
         }
-        this.checkMeshCollisions(1, next);
       }
+      if (this.hit) {
+        this.updateRaycastPointsByCollisions();
+        this.updateLineAndHitEntityByCollisions();
+      }
+      this.setLinePoints();
     };
   })(),
 
@@ -388,12 +382,12 @@ AFRAME.registerComponent('teleport-controls', {
       this.hitPoint.copy(intersects[0].point);
       // remove this part from this logic
       // If hit, just fill the rest of the points with the hit point and break the loop
-      // for (var j = i; j < this.line.numPoints; j++) {
-      //   this.line.setPoint(j, this.hitPoint);
-      // }
+      for (var j = i; j < this.line.numPoints; j++) {
+        this.line.setPoint(j, this.hitPoint);
+      }
       return true;
     } else {
-      // this.line.setPoint(i, next);
+      this.line.setPoint(i, next);
       return false;
     }
   },
@@ -457,7 +451,28 @@ AFRAME.registerComponent('teleport-controls', {
         this.line.setPoint(i, this.raycastPoints[i]);
       }
     }
-  }
+  },
+
+  /**
+   * update hitEntity & line material while there's a collision.
+   * only called while there's a collision
+  */
+  updateLineAndHitEntityByCollisions: function () {
+    this.setLineMaterial(this.hit);
+    this.hitEntity.setAttribute('position', this.hitPoint);
+    this.hitEntity.setAttribute('visible', true);
+  },
+
+  /**
+   *
+  */
+  updateRaycastPointsByCollisions: function () {
+    // collision happened, set the rest of points to the hit point.
+    const numPoints = this.raycastPoints.length;
+    for (let j = this.collidedIndex; j < numPoints; j++) {
+      this.raycastPoints[j].copy(this.hitPoint);
+    }
+  },
 });
 
 
