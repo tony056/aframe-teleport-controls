@@ -199,11 +199,9 @@ AFRAME.registerComponent('teleport-controls', {
 
       // Set default status as non-hit
       this.teleportEntity.setAttribute('visible', true);
-      this.line.material.color.set(this.curveMissColor);
-      this.line.material.opacity = this.data.missOpacity;
-      this.line.material.transparent = this.data.missOpacity < 1;
       this.hitEntity.setAttribute('visible', false);
       this.hit = false;
+      this.setLineMaterial(this.hit);
 
       if (this.data.type === 'parabolic') {
         v0.copy(direction).multiplyScalar(this.data.curveShootingSpeed);
@@ -222,53 +220,32 @@ AFRAME.registerComponent('teleport-controls', {
           this.raycaster.set(last, dirLastNext);
           last.copy(next);
 
-          if (this.checkMeshCollisions(i, next)) {
+          if (this.isMeshCollided()) {
             this.collidedIndex = i;
+            this.hitEntity.setAttribute('position', this.hitPoint);
+            this.hitEntity.setAttribute('visible', true);
+            this.hit = true;
+            this.setLineMaterial(this.hit);
             break;
           }
         }
-        if (this.collidedIndex >= 0) {
-          // collision happened
+        if (this.hit) {
+          // collision happened, set the rest of points to the hit point.
           for (let j = this.collidedIndex; j < numPoints; j++) {
             this.raycastPoints[j].copy(this.hitPoint);
           }
         }
-        for (let i = 0; i < numPoints; i++) {
-          if (i >= this.numActivePoints)
-            this.line.setPoint(i, this.raycastPoints[this.numActivePoints]);
-          else
-            this.line.setPoint(i, this.raycastPoints[i]);
-        }
-        // for (var i = 0; i < numPoints+1; i++) {
-        //   var t;
-        //   if (i == Math.floor(numPoints+1)){
-        //     t =  numPoints / (this.line.numPoints - 1);
-        //   }
-        //   else {
-        //     t = i / (this.line.numPoints - 1);
-        //   }
-        //   parabolicCurve(p0, v0, a, t, next);
-        //   // Update the raycaster with the length of the current segment last->next
-        //   var dirLastNext = lastNext.copy(next).sub(last).normalize();
-        //   this.raycaster.far = dirLastNext.length();
-        //   this.raycaster.set(last, dirLastNext);
-        //
-        //   this.raycastPoints[].copy(next);
-        //   this.lastDrawnPoint = next;
-        //   this.lastDrawnIndex = i;
-        //   if (this.checkMeshCollisions(i, next)) { break; }
-        //
-        //   last.copy(next);
-        // }
-        // for (var j = this.lastDrawnIndex+1; j < this.line.numPoints; j++) {
-        //   this.line.setPoint(j, this.lastDrawnPoint);
-        // }
+        this.setLinePoints();
       } else if (this.data.type === 'line') {
         next.copy(last).add(auxDirection.copy(direction).multiplyScalar(this.data.maxLength));
         this.raycaster.far = this.data.maxLength;
         this.raycaster.set(p0, direction);
         this.line.setPoint(0, p0);
 
+        // @todo: after refactor the checkMeshCollisions
+        if (this.isMeshCollided()) {
+
+        }
         this.checkMeshCollisions(1, next);
       }
     };
@@ -425,6 +402,62 @@ AFRAME.registerComponent('teleport-controls', {
     var angleNormals = this.referenceNormal.angleTo(collisionNormal);
     return (THREE.Math.RAD2DEG * angleNormals <= this.data.landingMaxAngle);
   },
+
+  /**
+   * Check for the raycaster intersection
+   * isMeshCollided() returns true/false
+   * based on whether the mesh collides with the raycaster
+   * @returns {boolean} true, if there's an intersection
+  */
+  isMeshCollided: function () {
+    var meshes;
+    if (!this.data.collisionEntities) {
+      meshes = this.defaultCollisionMeshes;
+    } else {
+      meshes = this.collisionEntities.map(function (entity) {
+        return entity.getObject3D('mesh');
+      }).filter(function (n) { return n; });
+      meshes = meshes.length ? meshes : this.defaultCollisionMeshes;
+    }
+
+    var intersects = this.raycaster.intersectObjects(meshes, true);
+    if (intersects.length > 0 && !this.hit &&
+        this.isValidNormalsAngle(intersects[0].face.normal)) {
+      // save the hit point and then return true
+      var point = intersects[0].point;
+      this.hitPoint.copy(intersects[0].point);
+      return true;
+    }
+    return false;
+  },
+
+  /**
+   * Set the line materials for rendering
+   * @param {boolean} isCollided to determine the hit/miss material of the line
+  */
+  setLineMaterial: function (isCollided) {
+    const color = isCollided ? this.curveHitColor : this.curveMissColor;
+    const opacity = isCollided ? this.data.hitOpacity : this.data.missOpacity;
+    const transparent = isCollided ? (this.data.hitOpacity < 1) : (this.data.missOpacity < 1);
+    this.line.material.color.set(color);
+    this.line.material.opacity = opacity;
+    this.line.material.transparent = transparent;
+  },
+
+  /**
+   * Set line points for rendering
+   *
+  */
+  setLinePoints: function () {
+    const numPoints = this.raycastPoints.length;
+    for (let i = 0; i < numPoints; i++) {
+      if (this.data.drawIncrementally && i >= this.numActivePoints) {
+        this.line.setPoint(i, this.raycastPoints[this.numActivePoints]);
+      } else {
+        this.line.setPoint(i, this.raycastPoints[i]);
+      }
+    }
+  }
 });
 
 
