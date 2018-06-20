@@ -418,7 +418,7 @@ AFRAME.registerComponent('teleport-controls', {
   },
 
   /**
-   *
+   * update the rest of raycastpoints to the hit point.
   */
   updateRaycastPointsByCollisions: function () {
     // collision happened, set the rest of points to the hit point.
