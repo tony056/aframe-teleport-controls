@@ -346,52 +346,6 @@ AFRAME.registerComponent('teleport-controls', {
     };
   })(),
 
-  /**
-   * Check for raycaster intersection.
-   *
-   * @param {number} Line fragment point index.
-   * @param {number} Next line fragment point index.
-   * @returns {boolean} true if there's an intersection.
-   */
-  checkMeshCollisions: function (i, next) {
-    // @todo We should add a property to define if the collisionEntity is dynamic or static
-    // If static we should do the map just once, otherwise we're recreating the array in every
-    // loop when aiming.
-    var meshes;
-    if (!this.data.collisionEntities) {
-      meshes = this.defaultCollisionMeshes;
-    } else {
-      meshes = this.collisionEntities.map(function (entity) {
-        return entity.getObject3D('mesh');
-      }).filter(function (n) { return n; });
-      meshes = meshes.length ? meshes : this.defaultCollisionMeshes;
-    }
-
-    var intersects = this.raycaster.intersectObjects(meshes, true);
-    if (intersects.length > 0 && !this.hit &&
-        this.isValidNormalsAngle(intersects[0].face.normal)) {
-      var point = intersects[0].point;
-      // should move this part to other function
-      this.line.material.color.set(this.curveHitColor);
-      this.line.material.opacity = this.data.hitOpacity;
-      this.line.material.transparent= this.data.hitOpacity < 1;
-      this.hitEntity.setAttribute('position', point);
-      this.hitEntity.setAttribute('visible', true);
-
-      this.hit = true;
-      this.hitPoint.copy(intersects[0].point);
-      // remove this part from this logic
-      // If hit, just fill the rest of the points with the hit point and break the loop
-      for (var j = i; j < this.line.numPoints; j++) {
-        this.line.setPoint(j, this.hitPoint);
-      }
-      return true;
-    } else {
-      this.line.setPoint(i, next);
-      return false;
-    }
-  },
-
   isValidNormalsAngle: function (collisionNormal) {
     var angleNormals = this.referenceNormal.angleTo(collisionNormal);
     return (THREE.Math.RAD2DEG * angleNormals <= this.data.landingMaxAngle);
