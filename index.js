@@ -76,6 +76,8 @@ AFRAME.registerComponent('teleport-controls', {
     this.raycaster = new THREE.Raycaster();
     this.collidedIndex = -1;
 
+    // init raycastPoints by initial curveNumberPoints
+    this.raycastPoints = Array.from(new Array(data.curveNumberPoints), () => new THREE.Vector3());
     this.defaultPlane = createDefaultPlane(this.data.defaultPlaneSize);
     this.defaultCollisionMeshes = [this.defaultPlane];
 
@@ -138,7 +140,7 @@ AFRAME.registerComponent('teleport-controls', {
     this.hitEntity.setAttribute('visible', false);
 
     if ('collisionEntities' in diff) { this.queryCollisionEntities(); }
-    if (!this.raycastPoints) {
+    if (!this.raycastPoints || 'curveNumberPoints' in diff) {
       this.raycastPoints = Array.from(new Array(data.curveNumberPoints), () => new THREE.Vector3());
     }
   },
