@@ -33,7 +33,6 @@ AFRAME.registerComponent('teleport-controls', {
     cameraRig: {type: 'selector'},
     teleportOrigin: {type: 'selector'},
     hitCylinderColor: {type: 'color', default: '#99ff99'},
-    beforeHitCylinderColor: {type: 'color', default: '#7f3fbf'},
     hitCylinderRadius: {default: 0.25, min: 0},
     hitCylinderHeight: {default: 0.3, min: 0},
     interval: {default: 0},
@@ -427,19 +426,18 @@ AFRAME.registerComponent('teleport-controls', {
   updateLineAndHitEntityByCollisions: function () {
     this.setLineMaterial(this.hit);
     this.hitEntity.setAttribute('position', this.hitPoint);
-    let isLineHit = this.timeSinceDrawStart >= this.data.incrementalDrawMs;
-    this.updateHitEntityColor(isLineHit);
+    this.updateHitEntityState();
     this.hitEntity.setAttribute('visible', true);
   },
 
   /**
-   * update the color of hit entity for three states ()
+   * update the opacity of hit entity before the line reaches it.
   */
-  updateHitEntityColor : function (isLineHit) {
-    let color = (isLineHit) ? this.data.hitCylinderColor : this.data.beforeHitCylinderColor;
+  updateHitEntityState : function () {
+    let opacity = this.timeSinceDrawStart / this.data.incrementalDrawMs * this.data.hitOpacity;
     let children = this.hitEntity.querySelectorAll('a-entity');
     for (let i = 0; i < children.length; i++) {
-      children[i].setAttribute('material', 'color', color);
+      children[i].setAttribute('material', 'opacity', opacity);
     }
   }
 });
