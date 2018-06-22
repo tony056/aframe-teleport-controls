@@ -224,7 +224,6 @@ AFRAME.registerComponent('teleport-controls', {
           if (this.isMeshCollided()) {
             this.collidedIndex = i;
             this.hit = true;
-            break;
           }
         }
       } else if (this.data.type === 'line') {
@@ -241,7 +240,6 @@ AFRAME.registerComponent('teleport-controls', {
       if (this.hit) {
         this.updateLineAndHitEntityByCollisions();
       }
-      // this.updateRaycastPoints();
       this.setLinePoints(p0, v0, a);
     };
   })(),
@@ -410,7 +408,7 @@ AFRAME.registerComponent('teleport-controls', {
     /**
      * scale: normalize the drawing time based on the end of the curve.
      * if we don't normalize it, the end of the curve will always be the end point of the raycasting
-     * instead of hitPoint while there's an intersection. 
+     * instead of hitPoint while there's an intersection.
     */
     let scale = endOfLineIndex / numPoints;
     let point = new THREE.Vector3();
@@ -419,19 +417,6 @@ AFRAME.registerComponent('teleport-controls', {
       let t = (i * timeSegment) * scale;
       parabolicCurve(p0, v0, a, t, point);
       this.line.setPoint(i, point);
-    }
-  },
-
-  /*
-   * update raycast points by the collision.
-  */
-  updateRaycastPoints: function () {
-    const numPoints = this.raycastPoints.length;
-    if (this.hit) {
-      this.raycastPoints[this.collidedIndex].copy(this.hitPoint);
-      for (let i = this.collidedIndex; i < numPoints; i++) {
-        this.raycastPoints[i].copy(this.hitPoint);
-      }
     }
   },
 
