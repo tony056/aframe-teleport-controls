@@ -171,7 +171,6 @@ AFRAME.registerComponent('teleport-controls', {
     var lastNext = new THREE.Vector3();
     var auxDirection = new THREE.Vector3();
     var timeSinceDrawStart = 0;
-    var collisionTime = this.incrementalDrawMs;
 
     return function (time, delta) {
       if (!this.active) { return; }
@@ -229,7 +228,6 @@ AFRAME.registerComponent('teleport-controls', {
           if (this.isMeshCollided()) {
             this.collidedIndex = i;
             this.hit = true;
-            collisionTime = t * 1000;
             break;
           }
         }
