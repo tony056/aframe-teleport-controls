@@ -33,6 +33,7 @@ AFRAME.registerComponent('teleport-controls', {
     cameraRig: {type: 'selector'},
     teleportOrigin: {type: 'selector'},
     hitCylinderColor: {type: 'color', default: '#99ff99'},
+    beforeHitCylinderColor: {type: 'color', default: '#7f3fbf'},
     hitCylinderRadius: {default: 0.25, min: 0},
     hitCylinderHeight: {default: 0.3, min: 0},
     interval: {default: 0},
@@ -123,7 +124,7 @@ AFRAME.registerComponent('teleport-controls', {
       this.line = createLine(data);
       this.line.material.opacity = this.data.hitOpacity;
       this.line.material.transparent = this.data.hitOpacity < 1;
-      this.timeSinceDrawStart = data.curveNumberPoints;
+      this.timeSinceDrawStart = 0;
       this.teleportEntity.setObject3D('mesh', this.line.mesh);
     }
 
@@ -183,11 +184,6 @@ AFRAME.registerComponent('teleport-controls', {
       if (this.timeSinceDrawStart > this.data.incrementalDrawMs) {
         this.timeSinceDrawStart = this.data.incrementalDrawMs;
       }
-      // this.timeSinceDrawStart = this.data.curveNumberPoints*timeSinceDrawStart/this.data.incrementalDrawMs;
-      // if (this.timeSinceDrawStart > this.data.curveNumberPoints){
-      //   this.timeSinceDrawStart = this.data.curveNumberPoints;
-      // }
-      // this.timeSinceDrawStart = Math.round(this.timeSinceDrawStart);
       // Only check for intersection if interval time has passed.
       if (this.prevCheckTime && (time - this.prevCheckTime < this.data.interval)) { return; }
       // Update check time.
@@ -431,6 +427,7 @@ AFRAME.registerComponent('teleport-controls', {
         this.raycastPoints[i].copy(this.raycastPoints[endIndexOfDrawLine]);
     }
   },
+
   /**
    * update hitEntity & line material while there's a collision.
    * only called while there's a collision
@@ -438,9 +435,21 @@ AFRAME.registerComponent('teleport-controls', {
   updateLineAndHitEntityByCollisions: function () {
     this.setLineMaterial(this.hit);
     this.hitEntity.setAttribute('position', this.hitPoint);
+    let isLineHit = this.timeSinceDrawStart >= this.data.incrementalDrawMs;
+    this.updateHitEntityColor(isLineHit);
     this.hitEntity.setAttribute('visible', true);
   },
 
+  /**
+   * update the color of hit entity for three states ()
+  */
+  updateHitEntityColor : function (isLineHit) {
+    let color = (isLineHit) ? this.data.hitCylinderColor : this.data.beforeHitCylinderColor;
+    let children = this.hitEntity.querySelectorAll('a-entity');
+    for (let i = 0; i < children.length; i++) {
+      children[i].setAttribute('material', 'color', color);
+    }
+  }
 });
 
 
