@@ -123,7 +123,7 @@ AFRAME.registerComponent('teleport-controls', {
       this.line = createLine(data);
       this.line.material.opacity = this.data.hitOpacity;
       this.line.material.transparent = this.data.hitOpacity < 1;
-      this.numActivePoints = data.curveNumberPoints;
+      this.timeSinceDrawStart = data.curveNumberPoints;
       this.teleportEntity.setObject3D('mesh', this.line.mesh);
     }
 
@@ -171,6 +171,7 @@ AFRAME.registerComponent('teleport-controls', {
     var lastNext = new THREE.Vector3();
     var auxDirection = new THREE.Vector3();
     var timeSinceDrawStart = 0;
+    var collisionTime = this.incrementalDrawMs;
 
     return function (time, delta) {
       if (!this.active) { return; }
@@ -179,11 +180,15 @@ AFRAME.registerComponent('teleport-controls', {
         timeSinceDrawStart = 0;
       }
       timeSinceDrawStart += delta;
-      this.numActivePoints = this.data.curveNumberPoints*timeSinceDrawStart/this.data.incrementalDrawMs;
-      if (this.numActivePoints > this.data.curveNumberPoints){
-        this.numActivePoints = this.data.curveNumberPoints;
+      this.timeSinceDrawStart = timeSinceDrawStart;
+      if (this.timeSinceDrawStart > this.data.incrementalDrawMs) {
+        this.timeSinceDrawStart = this.data.incrementalDrawMs;
       }
-      this.numActivePoints = Math.round(this.numActivePoints);
+      // this.timeSinceDrawStart = this.data.curveNumberPoints*timeSinceDrawStart/this.data.incrementalDrawMs;
+      // if (this.timeSinceDrawStart > this.data.curveNumberPoints){
+      //   this.timeSinceDrawStart = this.data.curveNumberPoints;
+      // }
+      // this.timeSinceDrawStart = Math.round(this.timeSinceDrawStart);
       // Only check for intersection if interval time has passed.
       if (this.prevCheckTime && (time - this.prevCheckTime < this.data.interval)) { return; }
       // Update check time.
@@ -209,11 +214,11 @@ AFRAME.registerComponent('teleport-controls', {
       if (this.data.type === 'parabolic') {
         v0.copy(direction).multiplyScalar(this.data.curveShootingSpeed);
         this.lastDrawnIndex = 0;
-        // const numPoints = this.data.drawIncrementally ? this.numActivePoints : this.line.numPoints;
         const numPoints = this.raycastPoints.length;
-        const numSegments = numPoints - 1;
+        const timeSegment = this.data.incrementalDrawMs / numPoints;
         for (let i = 0; i < numPoints; i++) {
-          let t = i / numSegments;
+          // t for parabolic requires in seconds instead of milliseconds.
+          let t = i * timeSegment / 1000;
           parabolicCurve(p0, v0, a, t, next);
           this.raycastPoints[i].copy(next);
           // Update the raycaster with the length of the current segment last->next
@@ -221,10 +226,10 @@ AFRAME.registerComponent('teleport-controls', {
           this.raycaster.far = dirLastNext.length();
           this.raycaster.set(last, dirLastNext);
           last.copy(next);
-
           if (this.isMeshCollided()) {
             this.collidedIndex = i;
             this.hit = true;
+            collisionTime = t * 1000;
             break;
           }
         }
@@ -240,9 +245,9 @@ AFRAME.registerComponent('teleport-controls', {
         }
       }
       if (this.hit) {
-        this.updateRaycastPointsByCollisions();
         this.updateLineAndHitEntityByCollisions();
       }
+      this.updateRaycastPoints();
       this.setLinePoints();
     };
   })(),
@@ -401,14 +406,30 @@ AFRAME.registerComponent('teleport-controls', {
   setLinePoints: function () {
     const numPoints = this.raycastPoints.length;
     for (let i = 0; i < numPoints; i++) {
-      if (this.data.drawIncrementally && i >= this.numActivePoints) {
-        this.line.setPoint(i, this.raycastPoints[this.numActivePoints]);
-      } else {
-        this.line.setPoint(i, this.raycastPoints[i]);
-      }
+      this.line.setPoint(i, this.raycastPoints[i]);
     }
   },
 
+  /*
+   * update raycast points by the ratio of the parabolic line we ar gonna draw.
+  */
+  updateRaycastPoints: function () {
+    const numPoints = this.raycastPoints.length;
+    let drawTime = 1;
+    let ratio = 1;
+    if (this.hit) {
+      this.raycastPoints[this.collidedIndex].copy(this.hitPoint);
+    }
+    let endOfLineIndex = (this.hit) ? this.collidedIndex : numPoints;
+    if (this.data.drawIncrementally) {
+      drawTime = this.timeSinceDrawStart;
+      ratio = (drawTime / this.data.incrementalDrawMs);
+    }
+    let endIndexOfDrawLine = Math.round(ratio * endOfLineIndex);
+    for (let i = endIndexOfDrawLine; i < numPoints; i++) {
+        this.raycastPoints[i].copy(this.raycastPoints[endIndexOfDrawLine]);
+    }
+  },
   /**
    * update hitEntity & line material while there's a collision.
    * only called while there's a collision
@@ -419,16 +440,6 @@ AFRAME.registerComponent('teleport-controls', {
     this.hitEntity.setAttribute('visible', true);
   },
 
-  /**
-   * update the rest of raycastpoints to the hit point.
-  */
-  updateRaycastPointsByCollisions: function () {
-    // collision happened, set the rest of points to the hit point.
-    const numPoints = this.raycastPoints.length;
-    for (let j = this.collidedIndex; j < numPoints; j++) {
-      this.raycastPoints[j].copy(this.hitPoint);
-    }
-  },
 });
 
 
