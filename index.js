@@ -241,8 +241,8 @@ AFRAME.registerComponent('teleport-controls', {
       if (this.hit) {
         this.updateLineAndHitEntityByCollisions();
       }
-      this.updateRaycastPoints();
-      this.setLinePoints();
+      // this.updateRaycastPoints();
+      this.setLinePoints(p0, v0, a);
     };
   })(),
 
@@ -397,34 +397,41 @@ AFRAME.registerComponent('teleport-controls', {
   },
 
   /**
-   * Set line points for rendering
-   *
+   * Set line points for rendering based on the draw time goes through.
+   * Each time the function divides the line segment based on the timeSinceDrawStart into curveNumberPoints
   */
-  setLinePoints: function () {
+  setLinePoints: function (p0, v0, a) {
     const numPoints = this.raycastPoints.length;
+    let drawTimeMs = (this.data.drawIncrementally) ? this.timeSinceDrawStart : this.data.incrementalDrawMs;
+    // see where the line should end
+    let endOfLineIndex = (this.hit) ? this.collidedIndex : numPoints;
+    // time segment in seconds for calculating the next point in the curve.
+    let timeSegment = drawTimeMs / numPoints / 1000;
+    /**
+     * scale: normalize the drawing time based on the end of the curve.
+     * if we don't normalize it, the end of the curve will always be the end point of the raycasting
+     * instead of hitPoint while there's an intersection. 
+    */
+    let scale = endOfLineIndex / numPoints;
+    let point = new THREE.Vector3();
+
     for (let i = 0; i < numPoints; i++) {
-      this.line.setPoint(i, this.raycastPoints[i]);
+      let t = (i * timeSegment) * scale;
+      parabolicCurve(p0, v0, a, t, point);
+      this.line.setPoint(i, point);
     }
   },
 
   /*
-   * update raycast points by the ratio of the parabolic line we ar gonna draw.
+   * update raycast points by the collision.
   */
   updateRaycastPoints: function () {
     const numPoints = this.raycastPoints.length;
-    let drawTime = 1;
-    let ratio = 1;
     if (this.hit) {
       this.raycastPoints[this.collidedIndex].copy(this.hitPoint);
-    }
-    let endOfLineIndex = (this.hit) ? this.collidedIndex : numPoints;
-    if (this.data.drawIncrementally) {
-      drawTime = this.timeSinceDrawStart;
-      ratio = (drawTime / this.data.incrementalDrawMs);
-    }
-    let endIndexOfDrawLine = Math.round(ratio * endOfLineIndex);
-    for (let i = endIndexOfDrawLine; i < numPoints; i++) {
-        this.raycastPoints[i].copy(this.raycastPoints[endIndexOfDrawLine]);
+      for (let i = this.collidedIndex; i < numPoints; i++) {
+        this.raycastPoints[i].copy(this.hitPoint);
+      }
     }
   },
 
