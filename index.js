@@ -314,6 +314,9 @@ AFRAME.registerComponent('teleport-controls', {
         return;
       }
 
+      // button released before the teleport animation finishes
+      if (this.hit && this.timeSinceDrawStart < this.data.incrementalDrawMs) { return; }
+
       const rig = this.data.cameraRig || this.el.sceneEl.camera.el;
       rig.object3D.getWorldPosition(this.rigWorldPosition);
       this.newRigWorldPosition.copy(this.hitPoint);
