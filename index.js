@@ -1,7 +1,36 @@
 /* global THREE, AFRAME, Element  */
 var cylinderTexture = require('./lib/cylinderTexture');
-var parabolicCurve = require('./lib/ParabolicCurve');
 var RayCurve = require('./lib/RayCurve');
+
+function easeOutIn(t){
+  if (t < 0.5) return 0.5 * ( (t=t*2-1) * t * t + 1);
+  return 0.5*(t = t*2-1)*t*t + 0.5;
+}
+
+// Parabolic motion equation, y = p0 + v0*t + 1/2at^2
+function parabolicCurveScalar (p0, v0, halfA, t, tSquared) {
+  return p0 + v0 * t + halfA * tSquared;
+}
+
+// Parabolic motion equation applied to 3 dimensions
+function parabolicCurve (p0, v0, halfA, t, out) {
+  const tSquared = t*t;
+  out.x = parabolicCurveScalar(p0.x, v0.x, halfA.x, t, tSquared);
+  out.y = parabolicCurveScalar(p0.y, v0.y, halfA.y, t, tSquared);
+  out.z = parabolicCurveScalar(p0.z, v0.z, halfA.z, t, tSquared);
+  return out;
+}
+
+/**
+ * Check for the raycaster intersection
+ * based on whether the mesh collides with the raycaster
+ * @returns {boolean} true, if there's an intersection
+ */
+
+function isValidNormalsAngle(collisionNormal, referenceNormal, landingMaxAngle) {
+  var angleNormals = referenceNormal.angleTo(collisionNormal);
+  return (THREE.Math.RAD2DEG * angleNormals <= landingMaxAngle);
+}
 
 if (typeof AFRAME === 'undefined') {
   throw new Error('Component attempted to register before AFRAME was available.');
@@ -47,9 +76,25 @@ AFRAME.registerComponent('teleport-controls', {
     landingMaxAngle: {default: '45', min: 0, max: 360},
     drawIncrementally: {default: false},
     incrementalDrawMs: {default: 700},
-    missOpacity: {default: 1.0},
-    hitOpacity: {default: 1.0}
+    missOpacity: {default: 0.1},
+    hitOpacity: {default: 0.3}
   },
+
+  checkLineIntersection: (function(){
+    const direction = new THREE.Vector3();
+    return function checkLineIntersection(start, end, meshes, raycaster, referenceNormal, landingMaxAngle, hitPoint) {
+      direction.copy(end).sub(start);
+      const distance = direction.length();
+      raycaster.far = distance;
+      raycaster.set(start, direction.normalize());
+      var intersects = raycaster.intersectObjects(meshes, true);
+      if (intersects.length > 0 && isValidNormalsAngle(intersects[0].face.normal, referenceNormal, landingMaxAngle)) {
+        hitPoint.copy(intersects[0].point);
+        return true;
+      }
+      return false;
+    };
+  })(),
 
   init: function () {
     var data = this.data;
@@ -74,10 +119,8 @@ AFRAME.registerComponent('teleport-controls', {
     this.curveMissColor = new THREE.Color();
     this.curveHitColor = new THREE.Color();
     this.raycaster = new THREE.Raycaster();
-    this.collidedIndex = -1;
 
-    // init raycastPoints by initial curveNumberPoints
-    this.raycastPoints = Array.from(new Array(data.curveNumberPoints), () => new THREE.Vector3());
+    this.parabola = Array.from(new Array(data.curveNumberPoints), () => new THREE.Vector3());
     this.defaultPlane = createDefaultPlane(this.data.defaultPlaneSize);
     this.defaultCollisionMeshes = [this.defaultPlane];
 
@@ -140,8 +183,8 @@ AFRAME.registerComponent('teleport-controls', {
     this.hitEntity.setAttribute('visible', false);
 
     if ('collisionEntities' in diff) { this.queryCollisionEntities(); }
-    if (!this.raycastPoints || 'curveNumberPoints' in diff) {
-      this.raycastPoints = Array.from(new Array(data.curveNumberPoints), () => new THREE.Vector3());
+    if ('curveNumberPoints' in diff) {
+      this.parabola = Array.from(new Array(data.curveNumberPoints), () => new THREE.Vector3());
     }
   },
 
@@ -160,15 +203,12 @@ AFRAME.registerComponent('teleport-controls', {
   tick: (function () {
     var p0 = new THREE.Vector3();
     var v0 = new THREE.Vector3();
-    var g = -9.8;
-    var a = new THREE.Vector3(0, g, 0);
-    var next = new THREE.Vector3();
-    var last = new THREE.Vector3();
+    var halfA = new THREE.Vector3(0, -9.8/2, 0);
+    var point = new THREE.Vector3();
     var quaternion = new THREE.Quaternion();
     var translation = new THREE.Vector3();
     var scale = new THREE.Vector3();
     var shootAngle = new THREE.Vector3();
-    var lastNext = new THREE.Vector3();
     var auxDirection = new THREE.Vector3();
     var timeSinceDrawStart = 0;
 
@@ -180,9 +220,10 @@ AFRAME.registerComponent('teleport-controls', {
       }
       timeSinceDrawStart += delta;
       this.timeSinceDrawStart = timeSinceDrawStart;
-      if (this.timeSinceDrawStart > this.data.incrementalDrawMs) {
+      if (this.timeSinceDrawStart > this.data.incrementalDrawMs || !this.data.drawIncrementally) {
         this.timeSinceDrawStart = this.data.incrementalDrawMs;
       }
+      const percentToDraw = this.timeSinceDrawStart / this.data.incrementalDrawMs;
       // Only check for intersection if interval time has passed.
       if (this.prevCheckTime && (time - this.prevCheckTime < this.data.interval)) { return; }
       // Update check time.
@@ -196,50 +237,77 @@ AFRAME.registerComponent('teleport-controls', {
       this.line.setDirection(auxDirection.copy(direction));
       this.obj.getWorldPosition(p0);
 
-      last.copy(p0);
-
-      // Set default status as non-hit
       this.teleportEntity.setAttribute('visible', true);
-      this.hitEntity.setAttribute('visible', false);
       this.hit = false;
-      this.collidedIndex = -1;
-      this.setLineMaterial(this.hit);
+      const numPoints = this.parabola.length;
 
+      var meshes;
+      if (!this.data.collisionEntities) {
+        meshes = this.defaultCollisionMeshes;
+      } else {
+        meshes = this.collisionEntities.map(function (entity) {
+          return entity.getObject3D('mesh');
+        }).filter(function (n) { return n; });
+        meshes = meshes.length ? meshes : this.defaultCollisionMeshes;
+      }
+
+
+      let collidedIndex = numPoints-1;
       if (this.data.type === 'parabolic') {
         v0.copy(direction).multiplyScalar(this.data.curveShootingSpeed);
-        this.lastDrawnIndex = 0;
-        const numPoints = this.raycastPoints.length;
-        const timeSegment = this.data.incrementalDrawMs / numPoints;
-        for (let i = 0; i < numPoints; i++) {
-          // t for parabolic requires in seconds instead of milliseconds.
-          let t = i * timeSegment / 1000;
-          parabolicCurve(p0, v0, a, t, next);
-          this.raycastPoints[i].copy(next);
-          // Update the raycaster with the length of the current segment last->next
-          var dirLastNext = lastNext.copy(next).sub(last).normalize();
-          this.raycaster.far = dirLastNext.length();
-          this.raycaster.set(last, dirLastNext);
-          last.copy(next);
-          if (this.isMeshCollided()) {
-            this.collidedIndex = i;
+        const timeSegment = 1 / (numPoints-1);
+        this.parabola[0].copy(p0);
+
+        for (let i = 1; i < numPoints; i++) {
+          let t = i * timeSegment;
+          parabolicCurve(p0, v0, halfA, t, point);
+          this.parabola[i].copy(point);
+
+          if (this.checkLineIntersection(this.parabola[i-1], this.parabola[i], meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle, this.hitPoint)) {
+            collidedIndex = i;
             this.hit = true;
+            break;
           }
         }
+
+        const percentRaycasted = collidedIndex / (numPoints-1);
+        const segmentT = percentToDraw*percentRaycasted / (numPoints-1);
+        for (let i = 0; i < numPoints; i++) {
+          const t = i*segmentT;
+          parabolicCurve(p0, v0, halfA, t, point);
+          this.line.setPoint(i, point);
+        }
       } else if (this.data.type === 'line') {
-        next.copy(last).add(auxDirection.copy(direction).multiplyScalar(this.data.maxLength));
         this.raycaster.far = this.data.maxLength;
         this.raycaster.set(p0, direction);
-        this.raycastPoints[0].copy(p0);
-        this.raycastPoints[1].copy(next);
-        if (this.isMeshCollided()) {
-          this.collidedIndex = 1;
+        point.copy(p0).add(auxDirection.copy(direction).multiplyScalar(this.data.maxLength));
+        if (this.checkLineIntersection(p0, point, meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle,  this.hitPoint)) {
+          collidedIndex = 1;
           this.hit = true;
         }
+        this.line.setPoint(0, p0);
+        if (this.hit) {
+          const distance = p0.distanceTo(this.hit? this.hitPoint : point);
+          point.copy(p0).add(auxDirection.copy(direction).multiplyScalar(percentToDraw * distance));
+        }
+        this.line.setPoint(1, point);
       }
+
+      const color = this.hit ? this.curveHitColor : this.curveMissColor;
+      const opacity = this.hit && this.timeSinceDrawStart === this.data.incrementalDrawMs ? this.data.hitOpacity : this.data.missOpacity;
+      const transparent = opacity < 1;
+      this.line.material.color.set(color);
+      this.line.material.opacity = opacity;
+      this.line.material.transparent = transparent;
+      this.hitEntity.setAttribute('visible', this.hit);
       if (this.hit) {
-        this.updateLineAndHitEntityByCollisions();
+        this.hitEntity.setAttribute('position', this.hitPoint);
+        const children = this.hitEntity.querySelectorAll('a-entity');
+        const hitEntityOpacity = this.data.hitOpacity*easeOutIn(percentToDraw);
+        for (let i = 0; i < children.length; i++) {
+          children[i].setAttribute('material', 'opacity', hitEntityOpacity);
+        }
       }
-      this.setLinePoints(p0, v0, a);
     };
   })(),
 
@@ -295,7 +363,6 @@ AFRAME.registerComponent('teleport-controls', {
     return function (evt) {
       if (!this.active) { return; }
 
-      // Hide the hit point and the curve
       this.active = false;
       this.hitEntity.setAttribute('visible', false);
       this.teleportEntity.setAttribute('visible', false);
@@ -336,8 +403,6 @@ AFRAME.registerComponent('teleport-controls', {
         for (var i = 0; i < hands.length; i++) {
           hands[i].object3D.getWorldPosition(handPosition);
 
-          // diff = rigWorldPosition - handPosition
-          // newPos = newRigWorldPosition - diff
           newHandPosition[i].copy(this.newRigWorldPosition).sub(this.rigWorldPosition).add(handPosition);
           hands[i].setAttribute('position', newHandPosition[i]);
         }
@@ -345,101 +410,7 @@ AFRAME.registerComponent('teleport-controls', {
 
       this.el.emit('teleported', this.teleportEventDetail);
     };
-  })(),
-
-  isValidNormalsAngle: function (collisionNormal) {
-    var angleNormals = this.referenceNormal.angleTo(collisionNormal);
-    return (THREE.Math.RAD2DEG * angleNormals <= this.data.landingMaxAngle);
-  },
-
-  /**
-   * Check for the raycaster intersection
-   * isMeshCollided() returns true/false
-   * based on whether the mesh collides with the raycaster
-   * @returns {boolean} true, if there's an intersection
-  */
-  isMeshCollided: function () {
-    var meshes;
-    if (!this.data.collisionEntities) {
-      meshes = this.defaultCollisionMeshes;
-    } else {
-      meshes = this.collisionEntities.map(function (entity) {
-        return entity.getObject3D('mesh');
-      }).filter(function (n) { return n; });
-      meshes = meshes.length ? meshes : this.defaultCollisionMeshes;
-    }
-
-    var intersects = this.raycaster.intersectObjects(meshes, true);
-    if (intersects.length > 0 && !this.hit &&
-        this.isValidNormalsAngle(intersects[0].face.normal)) {
-      // save the hit point and then return true
-      var point = intersects[0].point;
-      this.hitPoint.copy(intersects[0].point);
-      return true;
-    }
-    return false;
-  },
-
-  /**
-   * Set the line materials for rendering
-   * @param {boolean} isCollided to determine the hit/miss material of the line
-  */
-  setLineMaterial: function (isCollided) {
-    const color = isCollided ? this.curveHitColor : this.curveMissColor;
-    const opacity = isCollided ? this.data.hitOpacity : this.data.missOpacity;
-    const transparent = isCollided ? (this.data.hitOpacity < 1) : (this.data.missOpacity < 1);
-    this.line.material.color.set(color);
-    this.line.material.opacity = opacity;
-    this.line.material.transparent = transparent;
-  },
-
-  /**
-   * Set line points for rendering based on the draw time goes through.
-   * Each time the function divides the line segment based on the timeSinceDrawStart into curveNumberPoints
-  */
-  setLinePoints: function (p0, v0, a) {
-    const numPoints = this.raycastPoints.length;
-    let drawTimeMs = (this.data.drawIncrementally) ? this.timeSinceDrawStart : this.data.incrementalDrawMs;
-    // see where the line should end
-    let endOfLineIndex = (this.hit) ? this.collidedIndex : numPoints;
-    // time segment in seconds for calculating the next point in the curve.
-    let timeSegment = drawTimeMs / numPoints / 1000;
-    /**
-     * scale: normalize the drawing time based on the end of the curve.
-     * if we don't normalize it, the end of the curve will always be the end point of the raycasting
-     * instead of hitPoint while there's an intersection.
-    */
-    let scale = endOfLineIndex / numPoints;
-    let point = new THREE.Vector3();
-
-    for (let i = 0; i < numPoints; i++) {
-      let t = (i * timeSegment) * scale;
-      parabolicCurve(p0, v0, a, t, point);
-      this.line.setPoint(i, point);
-    }
-  },
-
-  /**
-   * update hitEntity & line material while there's a collision.
-   * only called while there's a collision
-  */
-  updateLineAndHitEntityByCollisions: function () {
-    this.setLineMaterial(this.hit);
-    this.hitEntity.setAttribute('position', this.hitPoint);
-    this.updateHitEntityState();
-    this.hitEntity.setAttribute('visible', true);
-  },
-
-  /**
-   * update the opacity of hit entity before the line reaches it.
-  */
-  updateHitEntityState : function () {
-    let opacity = this.timeSinceDrawStart / this.data.incrementalDrawMs * this.data.hitOpacity;
-    let children = this.hitEntity.querySelectorAll('a-entity');
-    for (let i = 0; i < children.length; i++) {
-      children[i].setAttribute('material', 'opacity', opacity);
-    }
-  }
+  })()
 });
 
 
