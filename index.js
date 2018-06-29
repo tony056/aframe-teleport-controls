@@ -242,17 +242,6 @@ AFRAME.registerComponent('teleport-controls', {
       this.hit = false;
       const numPoints = this.parabola.length;
 
-      var meshes;
-      if (!this.data.collisionEntities) {
-        meshes = this.defaultCollisionMeshes;
-      } else {
-        meshes = this.collisionEntities.map(function (entity) {
-          return entity.getObject3D('mesh');
-        }).filter(function (n) { return n; });
-        meshes = meshes.length ? meshes : this.defaultCollisionMeshes;
-      }
-
-
       let collidedIndex = numPoints-1;
       if (this.data.type === 'parabolic') {
         v0.copy(direction).multiplyScalar(this.data.curveShootingSpeed);
@@ -264,7 +253,7 @@ AFRAME.registerComponent('teleport-controls', {
           parabolicCurve(p0, v0, halfA, t, point);
           this.parabola[i].copy(point);
 
-          if (this.checkLineIntersection(this.parabola[i-1], this.parabola[i], meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle, this.hitPoint)) {
+          if (this.checkLineIntersection(this.parabola[i-1], this.parabola[i], this.meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle, this.hitPoint)) {
             collidedIndex = i;
             this.hit = true;
             break;
@@ -282,7 +271,7 @@ AFRAME.registerComponent('teleport-controls', {
         this.raycaster.far = this.data.maxLength;
         this.raycaster.set(p0, direction);
         point.copy(p0).add(auxDirection.copy(direction).multiplyScalar(this.data.maxLength));
-        if (this.checkLineIntersection(p0, point, meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle,  this.hitPoint)) {
+        if (this.checkLineIntersection(p0, point, this.meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle,  this.hitPoint)) {
           collidedIndex = 1;
           this.hit = true;
         }
@@ -324,6 +313,7 @@ AFRAME.registerComponent('teleport-controls', {
    */
   queryCollisionEntities: function () {
     var collisionEntities;
+    var meshes;
     var data = this.data;
     var el = this.el;
 
@@ -334,11 +324,25 @@ AFRAME.registerComponent('teleport-controls', {
 
     collisionEntities = [].slice.call(el.sceneEl.querySelectorAll(data.collisionEntities));
     this.collisionEntities = collisionEntities;
+    if (!this.data.collisionEntities) {
+      meshes = this.defaultCollisionMeshes;
+    } else {
+      meshes = this.collisionEntities.map(function (entity) {
+        return entity.getObject3D('mesh');
+      }).filter(function (n) { return n; });
+      meshes = meshes.length ? meshes : this.defaultCollisionMeshes;
+    }
+    this.meshes = meshes;
 
     // Update entity list on attach.
     this.childAttachHandler = function childAttachHandler (evt) {
       if (!evt.detail.el.matches(data.collisionEntities)) { return; }
       collisionEntities.push(evt.detail.el);
+      meshes = collisionEntities.map(function (entity) {
+        return entity.getObject3D('mesh');
+      }).filter(function (n) { return n; });
+      meshes = meshes.length ? meshes : this.defaultCollisionMeshes;
+
     };
     el.sceneEl.addEventListener('child-attached', this.childAttachHandler);
 
@@ -349,6 +353,10 @@ AFRAME.registerComponent('teleport-controls', {
       index = collisionEntities.indexOf(evt.detail.el);
       if (index === -1) { return; }
       collisionEntities.splice(index, 1);
+      meshes = collisionEntities.map(function (entity) {
+        return entity.getObject3D('mesh');
+      }).filter(function (n) { return n; });
+      meshes = meshes.length ? meshes : this.defaultCollisionMeshes;
     };
     el.sceneEl.addEventListener('child-detached', this.childDetachHandler);
   },
