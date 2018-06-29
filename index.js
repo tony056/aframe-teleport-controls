@@ -334,6 +334,12 @@ AFRAME.registerComponent('teleport-controls', {
     }
     this.meshes = meshes;
 
+    if (this.childAttachHandler) {
+      el.sceneEl.removeEventListener('child-attached', this.childAttachHandler);
+    }
+    if (this.childDetachHandler) {
+      el.sceneEl.removeEventListener('child-detached', this.childDetachHandler);
+    }
     // Update entity list on attach.
     this.childAttachHandler = function childAttachHandler (evt) {
       if (!evt.detail.el.matches(data.collisionEntities)) { return; }
