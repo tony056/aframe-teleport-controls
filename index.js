@@ -116,6 +116,7 @@ AFRAME.registerComponent('teleport-controls', {
     this.hit = false;
     this.prevCheckTime = undefined;
     this.prevHitHeight = 0;
+    this.prevCheckTime = 0;
     this.referenceNormal = new THREE.Vector3();
     this.curveMissColor = new THREE.Color();
     this.curveHitColor = new THREE.Color();
@@ -225,8 +226,7 @@ AFRAME.registerComponent('teleport-controls', {
         this.timeSinceDrawStart = this.data.incrementalDrawMs;
       }
       const percentToDraw = this.timeSinceDrawStart / this.data.incrementalDrawMs;
-      // Only check for intersection if interval time has passed.
-      if (this.prevCheckTime && (time - this.prevCheckTime < this.data.interval)) { return; }
+      let isPrevCheckTimeOverInterval = (time - this.prevCheckTime) < this.data.interval;
       // Update check time.
       this.prevCheckTime = time;
 
@@ -244,23 +244,24 @@ AFRAME.registerComponent('teleport-controls', {
 
       let collidedIndex = numPoints-1;
       if (this.data.type === 'parabolic') {
-        // calculate the whole raycast line each tick
-        v0.copy(direction).multiplyScalar(this.data.curveShootingSpeed);
-        const timeSegment = 1 / (numPoints-1);
-        this.parabola[0].copy(p0);
+        // Only check for intersection if interval time has passed.
+        if (isPrevCheckTimeOverInterval) {
+          v0.copy(direction).multiplyScalar(this.data.curveShootingSpeed);
+          const timeSegment = 1 / (numPoints-1);
+          this.parabola[0].copy(p0);
 
-        for (let i = 1; i < numPoints; i++) {
-          let t = i * timeSegment;
-          parabolicCurve(p0, v0, halfA, t, point);
-          this.parabola[i].copy(point);
+          for (let i = 1; i < numPoints; i++) {
+            let t = i * timeSegment;
+            parabolicCurve(p0, v0, halfA, t, point);
+            this.parabola[i].copy(point);
 
-          if (this.checkLineIntersection(this.parabola[i-1], this.parabola[i], this.meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle, this.hitPoint)) {
-            collidedIndex = i;
-            this.hit = true;
-            break;
+            if (this.checkLineIntersection(this.parabola[i-1], this.parabola[i], this.meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle, this.hitPoint)) {
+              collidedIndex = i;
+              this.hit = true;
+              break;
+            }
           }
         }
-
         /** percentRaycasted: the final parabolic curve we use, which might not be the whole parabolic line we calculate above.
          * percentToDraw: it decides the porpotion of the line we are drawing out at this time frame.
         */
