@@ -244,6 +244,7 @@ AFRAME.registerComponent('teleport-controls', {
 
       let collidedIndex = numPoints-1;
       if (this.data.type === 'parabolic') {
+        // calculate the whole raycast line each tick
         v0.copy(direction).multiplyScalar(this.data.curveShootingSpeed);
         const timeSegment = 1 / (numPoints-1);
         this.parabola[0].copy(p0);
@@ -260,6 +261,9 @@ AFRAME.registerComponent('teleport-controls', {
           }
         }
 
+        /** percentRaycasted: the final parabolic curve we use, which might not be the whole parabolic line we calculate above.
+         * percentToDraw: it decides the porpotion of the line we are drawing out at this time frame.
+        */
         const percentRaycasted = collidedIndex / (numPoints-1);
         const segmentT = percentToDraw*percentRaycasted / (numPoints-1);
         for (let i = 0; i < numPoints; i++) {
