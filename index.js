@@ -64,6 +64,7 @@ AFRAME.registerComponent('teleport-controls', {
     hitCylinderColor: {type: 'color', default: '#99ff99'},
     hitCylinderRadius: {default: 0.25, min: 0},
     hitCylinderHeight: {default: 0.3, min: 0},
+    hitOuterTorusScale: {default: 2.5, min: 0.25},
     interval: {default: 0},
     maxLength: {default: 10, min: 0, if: {type: ['line']}},
     curveNumberPoints: {default: 30, min: 2, if: {type: ['parabolic']}},
@@ -304,8 +305,14 @@ AFRAME.registerComponent('teleport-controls', {
         this.hitEntity.setAttribute('position', this.hitPoint);
         const children = this.hitEntity.querySelectorAll('a-entity');
         const hitEntityOpacity = this.data.hitOpacity*easeOutIn(percentToDraw);
+        const hitOuterTorusRadius = this.data.hitCylinderRadius  * (this.data.hitOuterTorusScale - easeOutIn(percentToDraw));
         for (let i = 0; i < children.length; i++) {
-          children[i].setAttribute('material', 'opacity', hitEntityOpacity);
+          let childId = children[i].getAttribute('id');
+          if (childId === 'outerTorus') {
+            children[i].setAttribute('geometry', 'radius', hitOuterTorusRadius);
+          } else {
+            children[i].setAttribute('material', 'opacity', hitEntityOpacity);
+          }
         }
       }
     };
@@ -427,6 +434,7 @@ function createHitEntity (data) {
   var cylinder;
   var hitEntity;
   var torus;
+  var outerTorus;
 
   // Parent.
   hitEntity = document.createElement('a-entity');
@@ -467,6 +475,24 @@ function createHitEntity (data) {
     depthTest: false
   });
   hitEntity.appendChild(cylinder);
+
+  // create another torus for animating when the hit destination is ready to go
+  outerTorus = document.createElement('a-entity');
+  outerTorus.setAttribute('geometry', {
+    primitive: 'torus',
+    radius: data.hitCylinderRadius * 2,
+    radiusTubular: 0.01
+  });
+  outerTorus.setAttribute('rotation', {x: 90, y: 0, z: 0});
+  outerTorus.setAttribute('material', {
+    shader: 'flat',
+    color: data.hitCylinderColor,
+    side: 'double',
+    opacity: data.hitOpacity,
+    depthTest: false
+  });
+  outerTorus.setAttribute('id', 'outerTorus');
+  hitEntity.appendChild(outerTorus);
 
   return hitEntity;
 }
