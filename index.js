@@ -117,6 +117,7 @@ AFRAME.registerComponent('teleport-controls', {
     this.prevCheckTime = undefined;
     this.prevHitHeight = 0;
     this.prevCheckTime = 0;
+    this.currentCollidedIndex = 0;
     this.referenceNormal = new THREE.Vector3();
     this.curveMissColor = new THREE.Color();
     this.curveHitColor = new THREE.Color();
@@ -226,9 +227,7 @@ AFRAME.registerComponent('teleport-controls', {
         this.timeSinceDrawStart = this.data.incrementalDrawMs;
       }
       const percentToDraw = this.timeSinceDrawStart / this.data.incrementalDrawMs;
-      let isPrevCheckTimeOverInterval = (time - this.prevCheckTime) < this.data.interval;
-      // Update check time.
-      this.prevCheckTime = time;
+      let isPrevCheckTimeOverInterval = (time - this.prevCheckTime) > this.data.interval;
 
       var matrixWorld = this.obj.matrixWorld;
       matrixWorld.decompose(translation, quaternion, scale);
@@ -239,13 +238,13 @@ AFRAME.registerComponent('teleport-controls', {
       this.obj.getWorldPosition(p0);
 
       this.teleportEntity.setAttribute('visible', true);
-      this.hit = false;
       const numPoints = this.parabola.length;
 
-      let collidedIndex = numPoints-1;
       if (this.data.type === 'parabolic') {
         // Only check for intersection if interval time has passed.
         if (isPrevCheckTimeOverInterval) {
+          this.hit = false;
+          this.currentCollidedIndex = numPoints - 1;
           v0.copy(direction).multiplyScalar(this.data.curveShootingSpeed);
           const timeSegment = 1 / (numPoints-1);
           this.parabola[0].copy(p0);
@@ -256,16 +255,17 @@ AFRAME.registerComponent('teleport-controls', {
             this.parabola[i].copy(point);
 
             if (this.checkLineIntersection(this.parabola[i-1], this.parabola[i], this.meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle, this.hitPoint)) {
-              collidedIndex = i;
               this.hit = true;
+              this.currentCollidedIndex = i;
               break;
             }
           }
+          this.prevCheckTime = time;
         }
         /** percentRaycasted: the final parabolic curve we use, which might not be the whole parabolic line we calculate above.
          * percentToDraw: it decides the porpotion of the line we are drawing out at this time frame.
         */
-        const percentRaycasted = collidedIndex / (numPoints-1);
+        const percentRaycasted = this.currentCollidedIndex / (numPoints-1);
         const segmentT = percentToDraw*percentRaycasted / (numPoints-1);
         for (let i = 0; i < numPoints; i++) {
           const t = i*segmentT;
