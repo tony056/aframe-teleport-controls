@@ -320,6 +320,7 @@ AFRAME.registerComponent('teleport-controls', {
   queryCollisionEntities: function () {
     var collisionEntities;
     var meshes;
+    var defaultCollisionMeshes;
     var data = this.data;
     var el = this.el;
 
@@ -330,13 +331,11 @@ AFRAME.registerComponent('teleport-controls', {
 
     collisionEntities = [].slice.call(el.sceneEl.querySelectorAll(data.collisionEntities));
     this.collisionEntities = collisionEntities;
+    defaultCollisionMeshes = this.defaultCollisionMeshes;
     if (!this.data.collisionEntities) {
       meshes = this.defaultCollisionMeshes;
     } else {
-      meshes = this.collisionEntities.map(function (entity) {
-        return entity.getObject3D('mesh');
-      }).filter(function (n) { return n; });
-      meshes = meshes.length ? meshes : this.defaultCollisionMeshes;
+      meshes = getMeshes(this.collisionEntities, defaultCollisionMeshes);
     }
     this.meshes = meshes;
 
@@ -350,10 +349,7 @@ AFRAME.registerComponent('teleport-controls', {
     this.childAttachHandler = function childAttachHandler (evt) {
       if (!evt.detail.el.matches(data.collisionEntities)) { return; }
       collisionEntities.push(evt.detail.el);
-      meshes = collisionEntities.map(function (entity) {
-        return entity.getObject3D('mesh');
-      }).filter(function (n) { return n; });
-      meshes = meshes.length ? meshes : this.defaultCollisionMeshes;
+      meshes = getMeshes(collisionEntities, defaultCollisionMeshes);
 
     };
     el.sceneEl.addEventListener('child-attached', this.childAttachHandler);
@@ -365,10 +361,7 @@ AFRAME.registerComponent('teleport-controls', {
       index = collisionEntities.indexOf(evt.detail.el);
       if (index === -1) { return; }
       collisionEntities.splice(index, 1);
-      meshes = collisionEntities.map(function (entity) {
-        return entity.getObject3D('mesh');
-      }).filter(function (n) { return n; });
-      meshes = meshes.length ? meshes : this.defaultCollisionMeshes;
+      meshes = getMeshes(collisionEntities, defaultCollisionMeshes);
     };
     el.sceneEl.addEventListener('child-detached', this.childDetachHandler);
   },
@@ -440,6 +433,13 @@ AFRAME.registerComponent('teleport-controls', {
   })()
 });
 
+function getMeshes (collisionEntities, defaultCollisionMeshes) {
+  var meshes = collisionEntities.map(function (entity) {
+    return entity.getObject3D('mesh');
+  }).filter(function (n) { return n; });
+  meshes = meshes.length ? meshes : defaultCollisionMeshes;
+  return meshes;
+}
 
 function createLine (data) {
   var numPoints = data.type === 'line' ? 2 : data.curveNumberPoints;
