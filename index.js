@@ -275,16 +275,17 @@ AFRAME.registerComponent('teleport-controls', {
       } else if (this.data.type === 'line') {
         this.raycaster.far = this.data.maxLength;
         this.raycaster.set(p0, direction);
-        point.copy(p0).add(auxDirection.copy(direction).multiplyScalar(this.data.maxLength));
-        if (this.checkLineIntersection(p0, point, this.meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle,  this.hitPoint)) {
-          collidedIndex = 1;
-          this.hit = true;
+        if (isPrevCheckTimeOverInterval) {
+          this.hit = false;
+          point.copy(p0).add(auxDirection.copy(direction).multiplyScalar(this.data.maxLength));
+          if (this.checkLineIntersection(p0, point, this.meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle,  this.hitPoint)) {
+            this.currentCollidedIndex = 1;
+            this.hit = true;
+          }
         }
         this.line.setPoint(0, p0);
-        if (this.hit) {
-          const distance = p0.distanceTo(this.hit? this.hitPoint : point);
-          point.copy(p0).add(auxDirection.copy(direction).multiplyScalar(percentToDraw * distance));
-        }
+        const distance = p0.distanceTo(this.hit? this.hitPoint : point);
+        point.copy(p0).add(auxDirection.copy(direction).multiplyScalar(percentToDraw * distance));
         this.line.setPoint(1, point);
       }
 
