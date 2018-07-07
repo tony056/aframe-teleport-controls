@@ -261,7 +261,7 @@ AFRAME.registerComponent('teleport-controls', {
 
         const timeToRaycastEndPoint = this.hitTime;
         const segmentT = percentToDraw*timeToRaycastEndPoint / (numDrawingPoints-1);
-        for (let i = 0; i < 30; i++) {
+        for (let i = 0; i < numDrawingPoints; i++) {
           const t = i*segmentT;
           parabolicCurve(p0, v0, halfA, t, point);
           this.line.setPoint(i, point);
