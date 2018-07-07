@@ -60,6 +60,7 @@ AFRAME.registerComponent('teleport-controls', {
     interval: {default: 0},
     maxLength: {default: 10, min: 0, if: {type: ['line']}},
     curveNumberPoints: {default: 30, min: 2, if: {type: ['parabolic']}},
+    parabolaNumberPoints: { default: 5, min: 2, if: { type: ['parabolic']}},
     curveLineWidth: {default: 0.025},
     curveHitColor: {type: 'color', default: '#99ff99'},
     curveMissColor: {type: 'color', default: '#ff0000'},
@@ -106,16 +107,16 @@ AFRAME.registerComponent('teleport-controls', {
     };
 
     this.hit = false;
+    this.hitTime = 0;
     this.prevCheckTime = undefined;
     this.prevHitHeight = 0;
     this.prevCheckTime = 0;
-    this.currentCollidedIndex = 0;
     this.referenceNormal = new THREE.Vector3();
     this.curveMissColor = new THREE.Color();
     this.curveHitColor = new THREE.Color();
     this.raycaster = new THREE.Raycaster();
 
-    this.parabola = Array.from(new Array(data.curveNumberPoints), () => new THREE.Vector3());
+    this.parabola = Array.from(new Array(data.parabolaNumberPoints), () => new THREE.Vector3());
     this.defaultPlane = createDefaultPlane(this.data.defaultPlaneSize);
     this.defaultCollisionMeshes = [this.defaultPlane];
 
@@ -230,36 +231,37 @@ AFRAME.registerComponent('teleport-controls', {
       this.obj.getWorldPosition(p0);
 
       this.teleportEntity.setAttribute('visible', true);
-      const numPoints = this.parabola.length;
-
+      const numRaycastPoints = this.parabola.length;
+      const numDrawingPoints = this.data.curveNumberPoints;
       if (this.data.type === 'parabolic') {
         // Only check for intersection if interval time has passed.
         if (isPrevCheckTimeOverInterval) {
           this.hit = false;
-          this.currentCollidedIndex = numPoints - 1;
           v0.copy(direction).multiplyScalar(this.data.curveShootingSpeed);
-          const timeSegment = 1 / (numPoints-1);
+          this.hitTime = Math.abs(v0.y / halfA.y);
+          const timeSegment = 1 / (numRaycastPoints-1);
           this.parabola[0].copy(p0);
 
-          for (let i = 1; i < numPoints; i++) {
+          for (let i = 1; i < numRaycastPoints; i++) {
             let t = i * timeSegment;
             parabolicCurve(p0, v0, halfA, t, point);
             this.parabola[i].copy(point);
 
             if (this.checkLineIntersection(this.parabola[i-1], this.parabola[i], this.meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle, this.hitPoint)) {
               this.hit = true;
-              this.currentCollidedIndex = i;
+              this.hitTime = Math.abs((this.hitPoint.x - p0.x) / v0.x);
               break;
             }
           }
           this.prevCheckTime = time;
         }
-        /** percentRaycasted: the final parabolic curve we use, which might not be the whole parabolic line we calculate above.
+        /** timeToRaycastEndPoint: the final parabolic curve we use, which might not be the whole parabolic line we calculate above.
          * percentToDraw: it decides the porpotion of the line we are drawing out at this time frame.
         */
-        const percentRaycasted = this.currentCollidedIndex / (numPoints-1);
-        const segmentT = percentToDraw*percentRaycasted / (numPoints-1);
-        for (let i = 0; i < numPoints; i++) {
+
+        const timeToRaycastEndPoint = this.hitTime;
+        const segmentT = percentToDraw*timeToRaycastEndPoint / (numDrawingPoints-1);
+        for (let i = 0; i < 30; i++) {
           const t = i*segmentT;
           parabolicCurve(p0, v0, halfA, t, point);
           this.line.setPoint(i, point);
@@ -271,7 +273,6 @@ AFRAME.registerComponent('teleport-controls', {
           this.hit = false;
           point.copy(p0).add(auxDirection.copy(direction).multiplyScalar(this.data.maxLength));
           if (this.checkLineIntersection(p0, point, this.meshes, this.raycaster, this.referenceNormal, this.data.landingMaxAngle,  this.hitPoint)) {
-            this.currentCollidedIndex = 1;
             this.hit = true;
           }
         }
