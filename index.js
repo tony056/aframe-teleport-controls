@@ -1,15 +1,24 @@
 /* global THREE, AFRAME, Element  */
 var cylinderTexture = require('./lib/cylinderTexture');
 var RayCurve = require('./lib/RayCurve');
-var parabolicCurve = require("./lib/ParabolicCurve");
-
-function easeIn(t){
-  return t*t;
-}
 
 function easeOutIn(t){
   if (t < 0.5) return 0.5 * ( (t=t*2-1) * t * t + 1);
   return 0.5*(t = t*2-1)*t*t + 0.5;
+}
+
+// Parabolic motion equation, y = p0 + v0*t + 1/2at^2
+function parabolicCurveScalar (p0, v0, halfA, t, tSquared) {
+  return p0 + v0 * t + halfA * tSquared;
+}
+
+// Parabolic motion equation applied to 3 dimensions
+function parabolicCurve (p0, v0, halfA, t, out) {
+  const tSquared = t*t;
+  out.x = parabolicCurveScalar(p0.x, v0.x, halfA.x, t, tSquared);
+  out.y = parabolicCurveScalar(p0.y, v0.y, halfA.y, t, tSquared);
+  out.z = parabolicCurveScalar(p0.z, v0.z, halfA.z, t, tSquared);
+  return out;
 }
 
 /**
@@ -54,7 +63,6 @@ AFRAME.registerComponent('teleport-controls', {
     teleportOrigin: {type: 'selector'},
     hitCylinderColor: {type: 'color', default: '#99ff99'},
     hitCylinderRadius: {default: 0.25, min: 0},
-    outerRadius: {default: 0.6, min: 0},
     hitCylinderHeight: {default: 0.3, min: 0},
     hitOuterTorusScale: {default: 2.5, min: 0.25},
     interval: {default: 0},
@@ -170,10 +178,10 @@ AFRAME.registerComponent('teleport-controls', {
     if (data.hitEntity) {
       this.hitEntity = data.hitEntity;
     } else if (!this.hitEntity || 'hitCylinderColor' in diff || 'hitCylinderHeight' in diff ||
-               'hitCylinderRadius' in diff || 'outerRadius' in diff) {
+               'hitCylinderRadius' in diff) {
       // Remove previous entity, create new entity (could be more performant).
       if (this.hitEntity) { this.hitEntity.parentNode.removeChild(this.hitEntity); }
-      this.hitEntity = this.createHitEntity(data);
+      this.hitEntity = createHitEntity(data);
       this.el.sceneEl.appendChild(this.hitEntity);
     }
     this.hitEntity.setAttribute('visible', false);
@@ -291,12 +299,17 @@ AFRAME.registerComponent('teleport-controls', {
       this.hitEntity.setAttribute('visible', this.hit);
       if (this.hit) {
         this.hitEntity.setAttribute('position', this.hitPoint);
+        const children = this.hitEntity.querySelectorAll('a-entity');
         const hitEntityOpacity = this.data.hitOpacity*easeOutIn(percentToDraw);
-        const dRadii = this.data.outerRadius - this.data.hitCylinderRadius;
-        const outerScale = (this.data.outerRadius - easeIn(percentToDraw)*dRadii) / this.data.outerRadius;
-        this.outerTorus.object3D.scale.set(outerScale, outerScale, 1);
-        this.torus.setAttribute('material', 'opacity', hitEntityOpacity);
-        this.cylinder.setAttribute('material', 'opacity', hitEntityOpacity);
+        const hitOuterTorusRadius = this.data.hitCylinderRadius  * (this.data.hitOuterTorusScale - easeOutIn(percentToDraw));
+        for (let i = 0; i < children.length; i++) {
+          let childId = children[i].getAttribute('id');
+          if (childId === 'outerTorus') {
+            children[i].setAttribute('geometry', 'radius', hitOuterTorusRadius);
+          } else {
+            children[i].setAttribute('material', 'opacity', hitEntityOpacity);
+          }
+        }
       }
     };
   })(),
@@ -425,75 +438,7 @@ AFRAME.registerComponent('teleport-controls', {
 
       this.el.emit('teleported', this.teleportEventDetail);
     };
-  })(),
-
-  /**
-   * Create mesh to represent the area of intersection.
-   * Default to a combination of torus and cylinder.
-   */
-  createHitEntity (data) {
-    var hitEntity;
-
-    // Parent.
-    hitEntity = document.createElement('a-entity');
-    hitEntity.className = 'hitEntity';
-
-    // Torus.
-    this.torus = document.createElement('a-entity');
-    this.torus.setAttribute('geometry', {
-      primitive: 'torus',
-      radius: data.hitCylinderRadius,
-      radiusTubular: 0.01
-    });
-    this.torus.setAttribute('rotation', {x: 90, y: 0, z: 0});
-    this.torus.setAttribute('material', {
-      shader: 'flat',
-      color: data.hitCylinderColor,
-      side: 'double',
-      depthTest: false
-    });
-    hitEntity.appendChild(this.torus);
-
-    // Cylinder.
-    this.cylinder = document.createElement('a-entity');
-    this.cylinder.setAttribute('position', {x: 0, y: data.hitCylinderHeight / 2, z: 0});
-    this.cylinder.setAttribute('geometry', {
-      primitive: 'cylinder',
-      segmentsHeight: 1,
-      radius: data.hitCylinderRadius,
-      height: data.hitCylinderHeight,
-      openEnded: true
-    });
-    this.cylinder.setAttribute('material', {
-      shader: 'flat',
-      color: data.hitCylinderColor,
-      side: 'double',
-      src: cylinderTexture,
-      transparent: true,
-      depthTest: false
-    });
-    hitEntity.appendChild(this.cylinder);
-
-    // create another torus for animating when the hit destination is ready to go
-    this.outerTorus = document.createElement('a-entity');
-    this.outerTorus.setAttribute('geometry', {
-      primitive: 'torus',
-      radius: data.outerRadius,
-      radiusTubular: 0.01
-    });
-    this.outerTorus.setAttribute('rotation', {x: 90, y: 0, z: 0});
-    this.outerTorus.setAttribute('material', {
-      shader: 'flat',
-      color: data.hitCylinderColor,
-      side: 'double',
-      opacity: data.hitOpacity,
-      depthTest: false
-    });
-    this.outerTorus.setAttribute('id', 'outerTorus');
-    hitEntity.appendChild(this.outerTorus);
-
-    return hitEntity;
-  }
+  })()
 });
 
 
@@ -502,6 +447,76 @@ function createLine (data) {
   return new RayCurve(numPoints, data.curveLineWidth);
 }
 
+/**
+ * Create mesh to represent the area of intersection.
+ * Default to a combination of torus and cylinder.
+ */
+function createHitEntity (data) {
+  var cylinder;
+  var hitEntity;
+  var torus;
+  var outerTorus;
+
+  // Parent.
+  hitEntity = document.createElement('a-entity');
+  hitEntity.className = 'hitEntity';
+
+  // Torus.
+  torus = document.createElement('a-entity');
+  torus.setAttribute('geometry', {
+    primitive: 'torus',
+    radius: data.hitCylinderRadius,
+    radiusTubular: 0.01
+  });
+  torus.setAttribute('rotation', {x: 90, y: 0, z: 0});
+  torus.setAttribute('material', {
+    shader: 'flat',
+    color: data.hitCylinderColor,
+    side: 'double',
+    depthTest: false
+  });
+  hitEntity.appendChild(torus);
+
+  // Cylinder.
+  cylinder = document.createElement('a-entity');
+  cylinder.setAttribute('position', {x: 0, y: data.hitCylinderHeight / 2, z: 0});
+  cylinder.setAttribute('geometry', {
+    primitive: 'cylinder',
+    segmentsHeight: 1,
+    radius: data.hitCylinderRadius,
+    height: data.hitCylinderHeight,
+    openEnded: true
+  });
+  cylinder.setAttribute('material', {
+    shader: 'flat',
+    color: data.hitCylinderColor,
+    side: 'double',
+    src: cylinderTexture,
+    transparent: true,
+    depthTest: false
+  });
+  hitEntity.appendChild(cylinder);
+
+  // create another torus for animating when the hit destination is ready to go
+  outerTorus = document.createElement('a-entity');
+  outerTorus.setAttribute('geometry', {
+    primitive: 'torus',
+    radius: data.hitCylinderRadius * 2,
+    radiusTubular: 0.01
+  });
+  outerTorus.setAttribute('rotation', {x: 90, y: 0, z: 0});
+  outerTorus.setAttribute('material', {
+    shader: 'flat',
+    color: data.hitCylinderColor,
+    side: 'double',
+    opacity: data.hitOpacity,
+    depthTest: false
+  });
+  outerTorus.setAttribute('id', 'outerTorus');
+  hitEntity.appendChild(outerTorus);
+
+  return hitEntity;
+}
 
 function createDefaultPlane (size) {
   var geometry;
